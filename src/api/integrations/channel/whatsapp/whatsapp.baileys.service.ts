@@ -131,6 +131,25 @@ import makeWASocket, {
   WAPresence,
   WASocket,
 } from 'baileys';
+import type { BinaryNode } from 'baileys';
+
+// GRM: assinatura "biz" que o WhatsApp exige para entregar mensagens
+// interativas (botões) enviadas por sessão de WhatsApp Web. Sem ela o
+// servidor aceita a mensagem, mas ela não chega ao celular. Igual ao
+// helper buildInteractiveBizNode da Evolution 2.4.0.
+function buildInteractiveBizNode(): BinaryNode {
+  return {
+    tag: 'biz',
+    attrs: {},
+    content: [
+      {
+        tag: 'interactive',
+        attrs: { type: 'native_flow', v: '1' },
+        content: [{ tag: 'native_flow', attrs: { v: '9', name: 'mixed' } }],
+      },
+    ],
+  };
+}
 import { Label } from 'baileys/lib/Types/Label';
 import { LabelAssociation } from 'baileys/lib/Types/LabelAssociation';
 import { spawn } from 'child_process';
@@ -2136,6 +2155,7 @@ export class BaileysStartupService extends ChannelStartupService {
     messageId?: string,
     ephemeralExpiration?: number,
     contextInfo?: any,
+    additionalNodes?: BinaryNode[],
     // participants?: GroupParticipant[],
   ) {
     sender = sender.toLowerCase();
@@ -2155,14 +2175,17 @@ export class BaileysStartupService extends ChannelStartupService {
     // NOTE: NÃO DEVEMOS GERAR O messageId AQUI, SOMENTE SE VIER INFORMADO POR PARAMETRO. A GERAÇÃO ANTERIOR IMPEDE O WZAP DE IDENTIFICAR A SOURCE.
     if (messageId) option.messageId = messageId;
 
-    if (message['viewOnceMessage']) {
+    if (message['viewOnceMessage'] || message['interactiveMessage']) {
       const m = generateWAMessageFromContent(sender, message, {
         timestamp: new Date(),
         userJid: this.instance.wuid,
         messageId,
         quoted,
       });
-      const id = await this.client.relayMessage(sender, message, { messageId });
+      const id = await this.client.relayMessage(sender, message, {
+        messageId,
+        ...(additionalNodes?.length ? { additionalNodes } : {}),
+      });
       m.key = { id: id, remoteJid: sender, participant: isPnUser(sender) ? sender : undefined, fromMe: true };
       for (const [key, value] of Object.entries(m)) {
         if (!value || (isArray(value) && value.length) === 0) {
@@ -2291,6 +2314,7 @@ export class BaileysStartupService extends ChannelStartupService {
     message: T,
     options?: Options,
     isIntegration = false,
+    additionalNodes?: BinaryNode[],
   ) {
     const isWA = (await this.whatsappNumber({ numbers: [number] }))?.shift();
 
@@ -2392,6 +2416,8 @@ export class BaileysStartupService extends ChannelStartupService {
           quoted,
           null,
           group?.ephemeralDuration,
+          undefined,
+          additionalNodes,
           // group?.participants,
         );
       } else {
@@ -2415,6 +2441,7 @@ export class BaileysStartupService extends ChannelStartupService {
           null,
           undefined,
           contextInfo,
+          additionalNodes,
         );
       }
 
@@ -3339,25 +3366,27 @@ export class BaileysStartupService extends ChannelStartupService {
       }
 
       const message: proto.IMessage = {
-        viewOnceMessage: {
-          message: {
-            interactiveMessage: {
-              nativeFlowMessage: {
-                buttons: [{ name: this.mapType.get('pix'), buttonParamsJson: this.toJSONString(data.buttons[0]) }],
-                messageParamsJson: JSON.stringify({ from: 'api', templateId: v4() }),
-              },
-            },
+        interactiveMessage: {
+          nativeFlowMessage: {
+            buttons: [{ name: this.mapType.get('pix'), buttonParamsJson: this.toJSONString(data.buttons[0]) }],
+            messageParamsJson: JSON.stringify({ from: 'api', templateId: v4() }),
           },
         },
       };
 
-      return await this.sendMessageWithTyping(data.number, message, {
-        delay: data?.delay,
-        presence: 'composing',
-        quoted: data?.quoted,
-        mentionsEveryOne: data?.mentionsEveryOne,
-        mentioned: data?.mentioned,
-      });
+      return await this.sendMessageWithTyping(
+        data.number,
+        message,
+        {
+          delay: data?.delay,
+          presence: 'composing',
+          quoted: data?.quoted,
+          mentionsEveryOne: data?.mentionsEveryOne,
+          mentioned: data?.mentioned,
+        },
+        false,
+        [buildInteractiveBizNode()],
+      );
     }
 
     const generate = await (async () => {
@@ -3371,18 +3400,14 @@ export class BaileysStartupService extends ChannelStartupService {
     });
 
     const message: proto.IMessage = {
-      viewOnceMessage: {
-        message: {
-          interactiveMessage: {
+      interactiveMessage: {
             body: {
+              // GRM: sem título, o texto vai sem os asteriscos soltos.
               text: (() => {
-                let t = '*' + data.title + '*';
-                if (data?.description) {
-                  t += '\n\n';
-                  t += data.description;
-                  t += '\n';
-                }
-                return t;
+                const title = data?.title?.trim();
+                const description = data?.description?.trim();
+                if (title && description) return '*' + title + '*\n\n' + description;
+                return title ? '*' + title + '*' : description || '';
               })(),
             },
             footer: { text: data?.footer },
@@ -3398,18 +3423,22 @@ export class BaileysStartupService extends ChannelStartupService {
               buttons: buttons,
               messageParamsJson: JSON.stringify({ from: 'api', templateId: v4() }),
             },
-          },
-        },
       },
     };
 
-    return await this.sendMessageWithTyping(data.number, message, {
-      delay: data?.delay,
-      presence: 'composing',
-      quoted: data?.quoted,
-      mentionsEveryOne: data?.mentionsEveryOne,
-      mentioned: data?.mentioned,
-    });
+    return await this.sendMessageWithTyping(
+      data.number,
+      message,
+      {
+        delay: data?.delay,
+        presence: 'composing',
+        quoted: data?.quoted,
+        mentionsEveryOne: data?.mentionsEveryOne,
+        mentioned: data?.mentioned,
+      },
+      false,
+      [buildInteractiveBizNode()],
+    );
   }
 
   public async locationMessage(data: SendLocationDto) {
