@@ -26,6 +26,9 @@ COPY ./Docker ./Docker
 
 RUN chmod +x ./Docker/scripts/* && dos2unix ./Docker/scripts/*
 
+# GRM: confirma o <status> solto do WhatsApp (conexão "surda"). Ver GRM.md.
+RUN node ./Docker/scripts/grm-patch-baileys.cjs
+
 RUN ./Docker/scripts/generate_database.sh
 
 RUN npm run build

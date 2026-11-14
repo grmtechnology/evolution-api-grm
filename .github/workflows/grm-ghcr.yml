@@ -26,5 +26,5 @@ jobs:
           push: true
           platforms: linux/amd64
           tags: |
-            ghcr.io/grmtechnology/evolution-api-grm:2.3.7-grm1
+            ghcr.io/grmtechnology/evolution-api-grm:2.3.7-grm2
             ghcr.io/grmtechnology/evolution-api-grm:latest
