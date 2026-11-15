@@ -24,6 +24,32 @@ const MAX_BATCHES = 200;
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
+/*
+Manda o tamanho do disco para o GRM Food, que avisa a equipe ao passar de 70%
+e também quando o relatório para de chegar (limpeza parada). Autenticado com
+a chave global da Evolution (a mesma que o GRM Food usa para falar com ela).
+GRM_USAGE_REPORT_URL=off desliga.
+*/
+async function report(databaseBytes, walBytes, deleted) {
+  const url =
+    process.env.GRM_USAGE_REPORT_URL ||
+    'https://food.grmtechnology.com.br/api/monitoring/evolution-usage';
+  const apiKey = process.env.AUTHENTICATION_API_KEY;
+  if (!apiKey || url === 'off') return;
+
+  try {
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', apikey: apiKey },
+      body: JSON.stringify({ database_bytes: databaseBytes, wal_bytes: walBytes, deleted }),
+      signal: AbortSignal.timeout(15000),
+    });
+    if (!response.ok) console.error(`[grm-cleanup] relatório de espaço recusado: HTTP ${response.status}`);
+  } catch (error) {
+    console.error('[grm-cleanup] relatório de espaço não enviado:', error && error.message);
+  }
+}
+
 async function cleanup() {
   const url = process.env.DATABASE_CONNECTION_URI;
   if (!url || !/^postgres/i.test(url)) return;
@@ -45,8 +71,21 @@ async function cleanup() {
       await sleep(500);
     }
 
-    const size = await client.query('select pg_size_pretty(pg_database_size(current_database())) as size');
-    console.log(`[grm-cleanup] ${deleted} mensagens com mais de ${DAYS} dias apagadas; banco: ${size.rows[0].size}`);
+    // Espaço ocupado no disco: todos os bancos + registro de transações (WAL).
+    const size = await client.query(
+      'select coalesce(sum(pg_database_size(datname)), 0)::bigint as bytes from pg_database',
+    );
+    const wal = await client
+      .query('select coalesce(sum(size), 0)::bigint as bytes from pg_ls_waldir()')
+      .catch(() => ({ rows: [{ bytes: 0 }] }));
+    const databaseBytes = Number(size.rows[0].bytes);
+    const walBytes = Number(wal.rows[0].bytes);
+    console.log(
+      `[grm-cleanup] ${deleted} mensagens com mais de ${DAYS} dias apagadas; disco: ${Math.round(
+        (databaseBytes + walBytes) / 1048576,
+      )} MB`,
+    );
+    await report(databaseBytes, walBytes, deleted);
   } catch (error) {
     console.error('[grm-cleanup] falhou (tenta de novo na próxima rodada):', error && error.message);
   } finally {

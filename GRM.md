@@ -35,3 +35,11 @@ O GRM Food e o GRM Business guardam a própria cópia das conversas. Falha só
 vai para o log (`[grm-cleanup]`); nunca derruba a Evolution.
 
 Voltar atrás: reverter este commit na branch `grm`.
+
+## 2.3.7-grm4 (15/11/2026) — relatório de espaço
+
+Depois de cada limpeza, `grm-cleanup.cjs` manda o espaço ocupado no disco
+(todos os bancos + WAL) para `https://food.grmtechnology.com.br/api/monitoring/evolution-usage`
+com a chave global (`AUTHENTICATION_API_KEY`). O GRM Food avisa a equipe ao
+passar de 70% do volume e quando o relatório para de chegar por 13 h.
+`GRM_USAGE_REPORT_URL=off` desliga.
