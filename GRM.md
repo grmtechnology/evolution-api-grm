@@ -23,3 +23,15 @@ protege a fila offline contra travar após um erro. A montagem falha se o
 código esperado não estiver lá. Ao atualizar o Baileys, revisar/remover.
 
 Voltar atrás: usar a imagem `2.3.7-grm1` na Railway.
+
+## 2.3.7-grm3 (15/11/2026) — limpeza automática do banco
+
+A Evolution guarda toda mensagem para sempre (154 mil em nov/2026, 63% com
+mais de 30 dias); o disco da Railway já encheu uma vez e derrubou o WhatsApp de
+todos. `Docker/scripts/grm-cleanup.cjs` roda em segundo plano (10 min após
+subir e depois a cada 6 h) e apaga mensagens com mais de
+`GRM_MESSAGE_RETENTION_DAYS` dias (padrão 30, mínimo 7), em lotes de 2000.
+O GRM Food e o GRM Business guardam a própria cópia das conversas. Falha só
+vai para o log (`[grm-cleanup]`); nunca derruba a Evolution.
+
+Voltar atrás: reverter este commit na branch `grm`.

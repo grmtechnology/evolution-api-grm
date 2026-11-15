@@ -60,4 +60,5 @@ ENV DOCKER_ENV=true
 
 EXPOSE 8080
 
-ENTRYPOINT ["/bin/bash", "-c", ". ./Docker/scripts/deploy_database.sh && npm run start:prod" ]
+# GRM: limpeza automática das mensagens antigas roda em segundo plano (Docker/scripts/grm-cleanup.cjs).
+ENTRYPOINT ["/bin/bash", "-c", ". ./Docker/scripts/deploy_database.sh && { node ./Docker/scripts/grm-cleanup.cjs & } && npm run start:prod" ]
